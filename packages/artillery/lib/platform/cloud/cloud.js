@@ -40,7 +40,10 @@ class ArtilleryCloudPlugin {
 
       this.testRunId = testInfo.testRunId;
       const testRunUrl = `${this.baseUrl}/load-tests/${this.testRunId}`;
+      this.getLoadTestEndpoint = `${this.baseUrl}/api/load-tests/${this.testRunId}/status`;
       testEndInfo.testRunUrl = testRunUrl;
+
+      this.setGetLoadTestInterval = this.setGetLoadTestInterval();
 
       console.log('Artillery Cloud reporting is configured for this test run');
       console.log(`Run URL: ${testRunUrl}`);
@@ -137,6 +140,7 @@ class ArtilleryCloudPlugin {
     global.artillery.ext({
       ext: 'onShutdown',
       method: async (opts) => {
+        clearInterval(this.setGetLoadTestInterval);
         // Wait for the last logLines events to be processed, as they can sometimes finish processing after shutdown has finished
         await awaitOnEE(
           global.artillery.globalEvents,
@@ -169,6 +173,42 @@ class ArtilleryCloudPlugin {
       waitedTime += 500;
     }
     return true;
+  }
+
+  async _getLoadTest() {
+    console.log('Getting load test');
+
+    try {
+      const res = await request.get(this.getLoadTestEndpoint, {
+        headers: this.defaultHeaders,
+        throwHttpErrors: false
+      });
+
+      console.log(`GET LOAD TEST RESPONSE: ${res.statusCode}`);
+      console.log(res.body);
+
+      return JSON.parse(res.body);
+    } catch (error) {
+      console.log('Error getting load test');
+      console.log(error);
+    }
+  }
+
+  setGetLoadTestInterval() {
+    // console.log(global.artillery)
+    const interval = setInterval(async () => {
+      const res = await this._getLoadTest();
+
+      if (res?.status === 'CANCELLATION_REQUESTED') {
+        console.log(`CANCELLING TEST RUN DUE TO: ${res.cancelledBy}!`);
+        global.artillery.suggestedExitCode = 15;
+        global.artillery.shutdown({ earlyStop: true });
+      } else {
+        console.log('we are good!');
+      }
+    }, 5000);
+
+    return interval;
   }
 
   async _event(eventName, eventPayload) {
