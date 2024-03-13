@@ -13,7 +13,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  // wsServer.close();
   server.close();
 });
 
